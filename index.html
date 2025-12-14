@@ -1,337 +1,254 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Coração 3D – Bloom + Shader + Texto 3D</title>
-  <style>
-    html,body{margin:0;height:100%;overflow:hidden;background:#050510}
-    #app{position:fixed;inset:0}
-    .hint{
-      position:fixed;left:50%;bottom:14px;transform:translateX(-50%);
-      font:14px system-ui;color:rgba(255,255,255,.75);
-      background:rgba(0,0,0,.25);padding:8px 14px;border-radius:999px;
-      backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.12);z-index:10
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Heart Scene – Print Style</title>
+<style>
+html,body{
+  margin:0;
+  padding:0;
+  height:100%;
+  background:#050510;
+  overflow:hidden;
+}
+#app{position:fixed;inset:0}
+.hint{
+  position:fixed;
+  left:50%;
+  bottom:14px;
+  transform:translateX(-50%);
+  font:14px system-ui;
+  color:rgba(255,255,255,.7);
+  background:rgba(0,0,0,.25);
+  padding:8px 14px;
+  border-radius:999px;
+  backdrop-filter:blur(8px);
+  border:1px solid rgba(255,255,255,.12);
+  z-index:10
+}
+</style>
 </head>
 <body>
-  <div id="app"></div>
-  <div class="hint">Arraste para girar • Scroll/Pinça para zoom</div>
 
-  <script type="module">
-    import * as THREE from "https://unpkg.com/three@0.160.0/build/three.module.js";
-    import { OrbitControls } from "https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js";
-    import { EffectComposer } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/EffectComposer.js";
-    import { RenderPass } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/RenderPass.js";
-    import { UnrealBloomPass } from "https://unpkg.com/three@0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js";
-    import { FontLoader } from "https://unpkg.com/three@0.160.0/examples/jsm/loaders/FontLoader.js";
-    import { TextGeometry } from "https://unpkg.com/three@0.160.0/examples/jsm/geometries/TextGeometry.js";
+<div id="app"></div>
+<div class="hint">Mouse: olhar • Scroll: zoom • WASD: mover • Q/E: subir/descer</div>
 
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const prefersReducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script>
+/* ================= CONFIG ================= */
+const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-    // ---------- Scene / Camera / Renderer ----------
-    const scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(0x050510, 4, 14);
+/* ================= SCENE ================= */
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x050510, 3, 16);
 
-    const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.01, 200);
-    camera.position.set(0, 0.8, 6.4);
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.01, 300);
+camera.position.set(0, 1, 8);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
-    renderer.setSize(innerWidth, innerHeight);
-    renderer.setPixelRatio(Math.min(2, devicePixelRatio));
-    renderer.setClearColor(0x050510, 1);
-    document.getElementById("app").appendChild(renderer.domElement);
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(2, devicePixelRatio));
+renderer.setClearColor(0x050510, 1);
+document.getElementById('app').appendChild(renderer.domElement);
 
-    // OrbitControls (câmera livre)
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.07;
-    controls.enablePan = true;
-    controls.minDistance = 4.5;
-    controls.maxDistance = 10.0;
-    controls.target.set(0, 0.45, 0);
+/* ================= GLOW TEXTURE ================= */
+function glowTexture(size=128){
+  const c=document.createElement('canvas');
+  c.width=c.height=size;
+  const g=c.getContext('2d');
+  const r=size/2;
+  const grad=g.createRadialGradient(r,r,0,r,r,r);
+  grad.addColorStop(0,'rgba(255,255,255,1)');
+  grad.addColorStop(.35,'rgba(255,40,160,.9)');
+  grad.addColorStop(.7,'rgba(255,0,120,.4)');
+  grad.addColorStop(1,'rgba(255,0,120,0)');
+  g.fillStyle=grad;
+  g.fillRect(0,0,size,size);
+  return new THREE.CanvasTexture(c);
+}
+const glow = glowTexture();
 
-    // ---------- Postprocessing (Bloom) ----------
-    const composer = new EffectComposer(renderer);
-    composer.addPass(new RenderPass(scene, camera));
+/* ================= HEART MATH ================= */
+function heart2D(t){
+  return{
+    x:16*Math.sin(t)**3,
+    y:13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t)
+  };
+}
 
-    const bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(innerWidth, innerHeight),
-      isMobile ? 1.15 : 1.45,   // strength
-      isMobile ? 0.55 : 0.65,   // radius
-      0.0                       // threshold
-    );
-    composer.addPass(bloomPass);
+/* ================= HEART ================= */
+function createHeart(count){
+  const pos=new Float32Array(count*3);
+  const col=new Float32Array(count*3);
+  const c1=new THREE.Color('#ff006e');
+  const c2=new THREE.Color('#ff4fd8');
 
-    // ---------- Background stars (clean / deep) ----------
-    (function addStars(){
-      const starCount = isMobile ? 900 : 1600;
-      const geo = new THREE.BufferGeometry();
-      const pos = new Float32Array(starCount * 3);
-      for (let i = 0; i < starCount; i++){
-        pos[i*3+0] = (Math.random()-0.5) * 60;
-        pos[i*3+1] = (Math.random()-0.5) * 40;
-        pos[i*3+2] = -Math.random() * 80;
-      }
-      geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-      const mat = new THREE.PointsMaterial({
-        size: 0.03,
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.35,
-        depthWrite: false
-      });
-      scene.add(new THREE.Points(geo, mat));
-    })();
+  for(let i=0;i<count;i++){
+    const t=Math.random()*Math.PI*2;
+    const p=heart2D(t);
+    const r=Math.pow(Math.random(),0.18); // contorno forte
 
-    // ---------- Heart math ----------
-    function heart2D(t){
-      return {
-        x: 16 * Math.sin(t) ** 3,
-        y: 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t)
-      };
-    }
+    const x=p.x*(1-r);
+    const y=(p.y+4)*(1-r);
+    const z=(Math.random()-.5)*12*(1-r); // volume igual em XYZ
 
-    // ---------- Heart geometry (more like print: strong contour) ----------
-    function makeHeartParticles(count){
-      const positions = new Float32Array(count * 3);
-      const colors    = new Float32Array(count * 3);
-      const sizes     = new Float32Array(count);
+    pos[i*3]=x*0.19;
+    pos[i*3+1]=y*0.19;
+    pos[i*3+2]=z*0.19;
 
-      const c1 = new THREE.Color("#ff006e");
-      const c2 = new THREE.Color("#ff4fd8");
+    const c=c1.clone().lerp(c2,Math.random());
+    col[i*3]=c.r; col[i*3+1]=c.g; col[i*3+2]=c.b;
+  }
+  return{pos,col};
+}
 
-      for (let i = 0; i < count; i++){
-        const t = Math.random() * Math.PI * 2;
-        const p = heart2D(t);
+const heartCount = isMobile ? 28000 : 62000;
+const heartData = createHeart(heartCount);
 
-        // MAIS contorno (quanto menor o expoente, mais “casca”)
-        const r = Math.pow(Math.random(), 0.22);
+const heartGeo = new THREE.BufferGeometry();
+heartGeo.setAttribute('position',new THREE.BufferAttribute(heartData.pos,3));
+heartGeo.setAttribute('color',new THREE.BufferAttribute(heartData.col,3));
 
-        const x = p.x * (1 - r);
-        const y = (p.y + 4) * (1 - r);
-        const z = (Math.random() - 0.5) * 12 * (0.18 + (1 - r));
+const heartMat = new THREE.PointsMaterial({
+  size:isMobile?0.095:0.075,
+  map:glow,
+  transparent:true,
+  vertexColors:true,
+  blending:THREE.AdditiveBlending,
+  depthWrite:false
+});
 
-        positions[i*3+0] = x * 0.19;
-        positions[i*3+1] = y * 0.19;
-        positions[i*3+2] = z * 0.19;
+const heart = new THREE.Points(heartGeo, heartMat);
+scene.add(heart);
 
-        const mix = Math.random();
-        const col = c1.clone().lerp(c2, mix);
-        colors[i*3+0] = col.r;
-        colors[i*3+1] = col.g;
-        colors[i*3+2] = col.b;
+/* ================= FALLING PARTICLES ================= */
+const rainCount = isMobile?1400:2800;
+const rainGeo = new THREE.BufferGeometry();
+const rainPos = new Float32Array(rainCount*3);
 
-        // tamanhos variáveis (mais “sparkle”)
-        sizes[i] = (isMobile ? 10.0 : 12.0) * (0.65 + Math.random() * 0.7);
-      }
+for(let i=0;i<rainCount;i++){
+  rainPos[i*3]=(Math.random()-.5)*2.2;
+  rainPos[i*3+1]=Math.random()*3.5+0.5;
+  rainPos[i*3+2]=(Math.random()-.5)*2.2;
+}
+rainGeo.setAttribute('position',new THREE.BufferAttribute(rainPos,3));
 
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-      geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-      geo.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1));
-      return geo;
-    }
+const rain = new THREE.Points(
+  rainGeo,
+  new THREE.PointsMaterial({
+    size:0.045,
+    map:glow,
+    transparent:true,
+    blending:THREE.AdditiveBlending,
+    opacity:.65,
+    depthWrite:false,
+    color:'#ff4fd8'
+  })
+);
+scene.add(rain);
 
-    const heartCount = prefersReducedMotion ? 14000 : (isMobile ? 26000 : 56000);
-    const heartGeo = makeHeartParticles(heartCount);
+/* ================= TEXT RINGS (5) ================= */
+function textRing(text,radius,y){
+  const group=new THREE.Group();
+  const chars=text.split('');
+  chars.forEach((_,i)=>{
+    const geo=new THREE.BoxGeometry(0.12,0.12,0.035);
+    const mat=new THREE.MeshBasicMaterial({color:0xff4fd8});
+    const mesh=new THREE.Mesh(geo,mat);
+    const a=(i/chars.length)*Math.PI*2;
+    mesh.position.set(Math.cos(a)*radius,y,Math.sin(a)*radius);
+    mesh.lookAt(0,y,0);
+    group.add(mesh);
+  });
+  return group;
+}
 
-    // ---------- Custom Shader (glow particles) ----------
-    const heartMat = new THREE.ShaderMaterial({
-      transparent: true,
-      depthWrite: false,
-      blending: THREE.AdditiveBlending,
-      uniforms: {
-        uTime: { value: 0 },
-        uPixelRatio: { value: Math.min(2, devicePixelRatio) },
-        uBaseSize: { value: isMobile ? 4.3 : 4.8 }, // escala do gl_PointSize
-      },
-      vertexShader: `
-        uniform float uTime;
-        uniform float uPixelRatio;
-        uniform float uBaseSize;
-        attribute float aSize;
-        attribute vec3 color;
-        varying vec3 vColor;
-        varying float vGlow;
+const rings=[];
+const ringTexts=[
+  "EU TE AMO PARA SEMPRE",
+  "VOCÊ É MEU MUNDO",
+  "MINHA VIDA É VOCÊ",
+  "PARA TODO O SEMPRE",
+  "MEU CORAÇÃO É SEU"
+];
 
-        void main(){
-          vColor = color;
+ringTexts.forEach((txt,i)=>{
+  const ring=textRing(txt,2.2+i*0.45,-0.8-i*0.35);
+  ring.userData.speed=(i%2===0?1:-1)*(0.002-i*0.00025);
+  rings.push(ring);
+  scene.add(ring);
+});
 
-          vec3 p = position;
+/* ================= CAMERA FREE MOVE ================= */
+let yaw=0,pitch=0;
+let move={f:0,b:0,l:0,r:0,u:0,d:0};
+let dragging=false,lx=0,ly=0;
 
-          // micro-tremor orgânico (bem sutil, estilo print)
-          float n = sin(uTime*1.3 + p.x*2.2 + p.y*1.7) * 0.002;
-          p += normalize(p) * n;
+addEventListener('mousedown',e=>{dragging=true;lx=e.clientX;ly=e.clientY});
+addEventListener('mousemove',e=>{
+  if(!dragging)return;
+  yaw-=(e.clientX-lx)*0.002;
+  pitch-=(e.clientY-ly)*0.002;
+  pitch=Math.max(-1.3,Math.min(1.3,pitch));
+  lx=e.clientX;ly=e.clientY;
+});
+addEventListener('mouseup',()=>dragging=false);
 
-          // “glow factor” pela profundidade/altura
-          vGlow = 0.6 + 0.4 * smoothstep(-0.5, 1.6, p.y);
+addEventListener('keydown',e=>{
+  if(e.key==='w')move.f=1;
+  if(e.key==='s')move.b=1;
+  if(e.key==='a')move.l=1;
+  if(e.key==='d')move.r=1;
+  if(e.key==='q')move.d=1;
+  if(e.key==='e')move.u=1;
+});
+addEventListener('keyup',e=>{
+  if(e.key==='w')move.f=0;
+  if(e.key==='s')move.b=0;
+  if(e.key==='a')move.l=0;
+  if(e.key==='d')move.r=0;
+  if(e.key==='q')move.d=0;
+  if(e.key==='e')move.u=0;
+});
 
-          vec4 mv = modelViewMatrix * vec4(p, 1.0);
-          gl_Position = projectionMatrix * mv;
+/* ================= ANIMATE ================= */
+let t=0;
+function animate(){
+  t+=0.04;
 
-          // tamanho com atenuação por distância
-          float dist = -mv.z;
-          gl_PointSize = (uBaseSize * aSize * uPixelRatio) / max(1.0, dist);
-        }
-      `,
-      fragmentShader: `
-        varying vec3 vColor;
-        varying float vGlow;
+  heart.scale.setScalar(1+Math.sin(t)*0.03);
 
-        void main(){
-          // círculo suave
-          vec2 uv = gl_PointCoord - vec2(0.5);
-          float d = length(uv);
+  // rain
+  const rp=rainGeo.attributes.position.array;
+  for(let i=0;i<rainCount;i++){
+    rp[i*3+1]-=0.05;
+    if(rp[i*3+1]<-2)rp[i*3+1]=Math.random()*3.5+0.5;
+  }
+  rainGeo.attributes.position.needsUpdate=true;
 
-          // centro forte + borda glow
-          float core = smoothstep(0.22, 0.0, d);
-          float halo = smoothstep(0.55, 0.18, d);
+  // rings
+  rings.forEach(r=>r.rotation.y+=r.userData.speed);
 
-          float a = (core*0.95 + halo*0.55) * vGlow;
-          if(a < 0.02) discard;
+  // camera movement
+  const dir=new THREE.Vector3(Math.sin(yaw),0,Math.cos(yaw));
+  const right=new THREE.Vector3(dir.z,0,-dir.x);
+  camera.position.addScaledVector(dir,(move.f-move.b)*0.1);
+  camera.position.addScaledVector(right,(move.r-move.l)*0.1);
+  camera.position.y+=(move.u-move.d)*0.1;
+  camera.rotation.set(pitch,yaw,0,'YXZ');
 
-          // puxa um pouco para “neon magenta”
-          vec3 col = vColor;
-          col.r = min(1.0, col.r * 1.15);
-          col.b = min(1.0, col.b * 1.05);
+  renderer.render(scene,camera);
+  requestAnimationFrame(animate);
+}
+animate();
 
-          gl_FragColor = vec4(col, a);
-        }
-      `
-    });
-
-    const heart = new THREE.Points(heartGeo, heartMat);
-    scene.add(heart);
-
-    // ---------- Escape particles (spiral like print) ----------
-    const escapeCount = isMobile ? 900 : 1900;
-    const escapeGeo = new THREE.BufferGeometry();
-    const ePos = new Float32Array(escapeCount * 3);
-    const eData = new Array(escapeCount);
-
-    for (let i = 0; i < escapeCount; i++){
-      ePos[i*3+0] = (Math.random()-0.5) * 0.45;
-      ePos[i*3+1] = (Math.random()-0.5) * 0.45;
-      ePos[i*3+2] = (Math.random()-0.5) * 0.45;
-      eData[i] = {
-        a: Math.random() * Math.PI * 2,
-        r: 0.15 + Math.random() * 0.55,
-        v: 0.002 + Math.random() * 0.004
-      };
-    }
-    escapeGeo.setAttribute("position", new THREE.BufferAttribute(ePos, 3));
-
-    // escape usando o MESMO shader (mais parecido com print)
-    const escapeMat = heartMat.clone();
-    const escape = new THREE.Points(escapeGeo, escapeMat);
-    escape.position.set(0, 0.05, 0);
-    scene.add(escape);
-
-    // ---------- Real 3D font (curved arc) ----------
-    let textGroup = new THREE.Group();
-    scene.add(textGroup);
-
-    function buildCurved3DText(font, text){
-      // limpa
-      while (textGroup.children.length) textGroup.remove(textGroup.children[0]);
-
-      const radius = 1.65;     // abraça o coração
-      const y = 1.16;
-      const total = text.length;
-
-      const mat = new THREE.MeshBasicMaterial({
-        color: 0xff4fd8,
-        transparent: true,
-        opacity: 0.95
-      });
-
-      for (let i = 0; i < total; i++){
-        const ch = text[i] === " " ? " " : text[i];
-        const geo = new TextGeometry(ch, {
-          font,
-          size: 0.12,
-          height: 0.02,
-          curveSegments: 6,
-          bevelEnabled: true,
-          bevelThickness: 0.005,
-          bevelSize: 0.003,
-          bevelSegments: 2
-        });
-        geo.computeBoundingBox();
-        geo.center();
-
-        const mesh = new THREE.Mesh(geo, mat);
-        const angle = (i - (total-1)/2) * 0.18;
-
-        mesh.position.set(Math.sin(angle) * radius, y, Math.cos(angle) * radius);
-        mesh.lookAt(0, y - 0.15, 0);
-
-        textGroup.add(mesh);
-      }
-    }
-
-    // Load font (Three.js example font)
-    const loader = new FontLoader();
-    loader.load(
-      "https://unpkg.com/three@0.160.0/examples/fonts/helvetiker_regular.typeface.json",
-      (font) => buildCurved3DText(font, "Feliz Mês, Mi Vida")
-    );
-
-    // ---------- Animation ----------
-    let beat = 0;
-    const clock = new THREE.Clock();
-
-    function animate(){
-      const t = clock.getElapsedTime();
-      heartMat.uniforms.uTime.value = t;
-      escapeMat.uniforms.uTime.value = t + 10.0;
-
-      // pulsação “musical”
-      beat += 0.04;
-      const pulse = 1 + Math.sin(beat) * 0.03;
-      heart.scale.setScalar(pulse);
-
-      // escape spiral (like print)
-      const p = escapeGeo.attributes.position.array;
-      for (let i = 0; i < escapeCount; i++){
-        const d = eData[i];
-        d.a += d.v * 6.0;
-
-        p[i*3+0] = Math.cos(d.a) * d.r * 0.55;
-        p[i*3+2] = Math.sin(d.a) * d.r * 0.55;
-        p[i*3+1] += d.v * 10.5;
-
-        if (p[i*3+1] > 1.8){
-          p[i*3+1] = -0.7;
-          d.a = Math.random() * Math.PI * 2;
-          d.r = 0.15 + Math.random() * 0.55;
-          d.v = 0.002 + Math.random() * 0.004;
-        }
-      }
-      escapeGeo.attributes.position.needsUpdate = true;
-
-      // texto gira bem sutil
-      textGroup.rotation.y += 0.0017;
-
-      controls.update();
-      composer.render();
-      requestAnimationFrame(animate);
-    }
-    animate();
-
-    // ---------- Resize ----------
-    addEventListener("resize", () => {
-      camera.aspect = innerWidth / innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(innerWidth, innerHeight);
-      composer.setSize(innerWidth, innerHeight);
-      bloomPass.setSize(innerWidth, innerHeight);
-      heartMat.uniforms.uPixelRatio.value = Math.min(2, devicePixelRatio);
-      escapeMat.uniforms.uPixelRatio.value = Math.min(2, devicePixelRatio);
-    });
-  </script>
+/* ================= RESIZE ================= */
+addEventListener('resize',()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight);
+});
+</script>
 </body>
 </html>
